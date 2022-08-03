@@ -213,10 +213,10 @@ cmt = 'file was created at:' + time.asctime()+'\n' + 'polarizer positions [deg]:
 # open file, will not overwrite!
 try:
 	with open(inputs['path']+inputs['fname'],'x',encoding='utf-8') as f:
-		np.savetxt(inputs['path']+inputs['fname'],data,delimiter=',',header=cmt,encoding='utf=8')
+		np.savetxt(f,data,delimiter=',',header=cmt,encoding='utf=8')
 except FileExistsError:
 	print('this file name already exisits, i wont let you overwrite your data!')
 	new_fname = input('please put a new (unused) file name here:')
-	with open(inputs['path']+new_fname,'x',encoding='utf-8') as f:
+	with open(f,'x',encoding='utf-8') as f:
 		np.savetxt(inputs['path']+new_fname,data,delimiter=',',header=cmt,encoding='utf-8')
 print('saving completed, have a nice day :)')
