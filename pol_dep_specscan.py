@@ -203,6 +203,8 @@ for i in range(len(pol_pos_cts)):
 # check if loop had to break 
 if (did_break):
 	print('an error occured during the collection, nothing has been saved')
+	mtr.close()
+	spectrum.close()
 	raise Exception('see above for specific issue, ending program')
 else:
 	print('collection finished, saving data, closing machine connections')
