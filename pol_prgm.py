@@ -1,6 +1,7 @@
 # motorized polarizer programs to be used with Thorlabs TDC001+PRM1-Z8
 # see readme and other .py file for better documentation
 # boilerplate
+from mimetypes import init
 import numpy as np
 from functools import partial
 import thorlabs_apt_device as apt
@@ -71,32 +72,36 @@ def pol_step(port,initial,step,final,wait):
 	step - float - step size the pol will take [deg]
 	final - float - final pol position [deg]
 	wait - float - time [sec] waited before the pol moves again
-	NOTE: want wait > 5 sec
+	NOTE: if 0.<step<80. then wait > 10 sec, if 80<step<=180 then wait > 20sec
 	NO OUTPUTS
 	'''
 	# assertions
 	assert(type(port)==str), 'motor_port input must be a str'
-	assert(isinstance(intial,(float,int))), 'intial_pos input must be a float or int'
+	assert(isinstance(initial,(float,int))), 'intial_pos input must be a float or int'
 	assert(isinstance(final,(float,int))), 'final_position input must be a float or int'
 	assert(isinstance(step,(float,int))), 'step input must be float or int'
 	assert(isinstance(wait,(float,int))), 'wait input must be float of int'
+	if (step<80.):
+		assert(wait > 10.), 'wait gotta be longer champ'
+	elif (80.<step<=180.):
+		assert(wait>20.), 'wait gotta be longer champ'
 	# connect to the motor
-	print('estabishing connection with motor, one moment please')
+	print('estabishing connection with motor, one minute please')
 	try:
-		mtr = apt.devices.tdc001.TDC001(serial_port=inputs['motor_port'])
+		mtr = apt.devices.tdc001.TDC001(serial_port=port)
 	except:
 		mtr.close()
 		raise Exception('an error occured while trying to connect to the motor')
 	else:
-		time.sleep(30.)
+		time.sleep(60.)
 	# check for the motor connected status, if it starts off as True just continue code, or move and re-home and double check
 	mtr_connection = is_mtr_connected(mtr) # status if the motor is connected (bool), must always be true
 	if (mtr_connection==False):
 		# move 5 degrees, sleep, and then move back
-		mtr.move_absolute(from_d(5.))
-		time.sleep(5.)
+		mtr.move_relative(from_d(5.))
+		time.sleep(wait)
 		mtr.move_absolute(from_d(0.))
-		time.sleep(5.)
+		time.sleep(wait)
 	# now double check motor connection, if true yay keep going, else send it back to adam for fixin
 	mtr_connection = is_mtr_connected(mtr)
 	if (mtr_connection):
@@ -107,9 +112,9 @@ def pol_step(port,initial,step,final,wait):
 	# extra handling from the people that made this
 	mtr.register_error_callback(error_callback)
 	# desired polarizer positions [deg]
-	pol_pos_d = np.arange(inputs['intial_pos'],(inputs['final_position']+inputs['step']),inputs['step'],dtype=float)
+	pol_pos_d = np.arange(initial,final+step,step,dtype=float)
 	# desired polarizer pos [cts]
-	pol_pos_cts = np.array(from_d(pol_pos_d[i]) for i in range(len(pol_pos_d)))
+	pol_pos_cts = np.array([from_d(pol_pos_d[i]) for i in range(len(pol_pos_d))])
 	# move pol to initial pos, if needed
 	if (np.isclose(pol_pos_d[0],to_d(mtr.status['position']),atol=.2)==False):
 		print('moving polarizer to initial position')
