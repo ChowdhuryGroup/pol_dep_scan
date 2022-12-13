@@ -1,4 +1,4 @@
-# pol_dep_scan
+# shg-polarization-scan
 script to run to automate a polarization dependent spectrograph scan
 for use in OSU's Chowdhury lab
 by Adam Fisher
