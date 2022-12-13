@@ -1,7 +1,8 @@
+# Original Author: Adam Fisher (July 2022)
+# Modified by Liam Clink
 # moving motorized thorlabs waveplate while also collecting spectra
 # just need to run this file, no program calls nessecary
 # for polarization dep SHG measurements
-# by Adam Fisher
 # import packages, double check you have all of these installed
 import numpy as np
 from functools import partial
