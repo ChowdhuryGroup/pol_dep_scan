@@ -1,15 +1,14 @@
 # shg-polarization-scan
 
-script to run to automate a polarization dependent spectrograph scan
-for use in OSU's Chowdhury lab
+Script to run to automate a polarization dependent spectrograph scan
+for use in OSU's Chowdhury Lab
 by Adam Fisher
 
-currently only supports interfacing with the Thorlabs TDC001 motorized stage controller connected to a Thorlabs PRM1Z8 rotating polarizer and the Ocean Optics SpectraPro HRS-300 spectrometer
+Currently there is only support for interfacing with only the Thorlabs TDC001 motorized stage controller connected to a Thorlabs PRM1Z8 rotating polarizer and the Ocean Optics SpectraPro HRS-300 spectrometer
 
-requires 2 packages: thorlabs_apt_device and seabreeze (links below)
+Third Party Dependencies: thorlabs_apt_device and seabreeze (links below)
 APT: <https://thorlabs-apt-device.readthedocs.io/en/latest/index.html>
 Seabreeze: <https://python-seabreeze.readthedocs.io/en/latest/index.html>
-both of these packages as well as this one has no relation to their respective companies
 
 ## Please read the .py script before running
 
