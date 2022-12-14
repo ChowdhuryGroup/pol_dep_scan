@@ -16,8 +16,14 @@ import argparse
 class LoadFromFile(argparse.Action):
     def __call__(self, parser, namespace, values, option_string=None):
         with values as f:
-            # parse arguments in the file and store them in the target namespace
-            parser.parse_args(f.read().split(), namespace)
+            contents = f.read()
+
+        # parse arguments in the file and store them in a blank namespace
+        data = parser.parse_args(contents.split(), namespace=None)
+        for k, v in vars(data).items():
+            # set arguments in the target namespace if they haven’t been set yet
+            if getattr(namespace, k, None) is not None:
+                setattr(namespace, k, v)
 
 
 parser = argparse.ArgumentParser()
