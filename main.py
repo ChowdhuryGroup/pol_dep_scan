@@ -1,18 +1,83 @@
 # Original Author: Adam Fisher (July 2022)
 # Modified by Liam Clink
 # moving motorized thorlabs waveplate while also collecting spectra
-import utility
+# import utility
 import numpy as np
-from functools import partial
-import thorlabs_apt_device as apt
+
+# import thorlabs_apt_device as apt
 import time
-import oceanOpticSpectrosco as spectro
+
+# import oceanOpticSpectrosco as spectro
+import atexit
+import pathlib
+import argparse
+
+
+class LoadFromFile(argparse.Action):
+    def __call__(self, parser, namespace, values, option_string=None):
+        with values as f:
+            # parse arguments in the file and store them in the target namespace
+            parser.parse_args(f.read().split(), namespace)
+
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--motor_port", type=str, help="motor port location")
+parser.add_argument(
+    "--initial_angle",
+    type=float,
+    help="inital motor angle (degrees), background data taken at this position, must be in [0,360]",
+)
+parser.add_argument(
+    "--final_angle", type=float, help="waveplates final angle (degrees)"
+)
+parser.add_argument(
+    "--step",
+    type=float,
+    help="angular distance traveled between each spectrograph measurement (degrees)",
+)
+parser.add_argument("--specSN", type=str, help="spectrograph serial number")
+parser.add_argument(
+    "--spec_int_time", type=float, help="spectrograph integration time (msec)"
+)
+parser.add_argument(
+    "--fname",
+    type=str,
+    help="file name that data will saved under (str), MUST BE A .txt file",
+)
+parser.add_argument(
+    "--path",
+    type=str,
+    help="relative path to directory you would like the file saved to",
+)
+parser.add_argument("--file", type=open, action=LoadFromFile, help="Specify input file")
+inputs = parser.parse_args()
+
+print(inputs)
+
+
+# open file, will not overwrite!
+try:
+    f = open(inputs.path + inputs.fname, "wb")
+    atexit.register(f.close())
+except FileExistsError:
+    raise Exception("The selected file name already exists!")
+
+f.write("File was created at:" + time.asctime() + "\n")
+f.write("Polarizer angles [deg]:\n")
+
+# NEED TO FIX POL POS D
+pol_pos_d = np.arange(
+    inputs.intial_angle, (inputs.final_angle + inputs.step), inputs.step
+)  # desired polarizer positions [deg]
+pol_pos_cts = np.array(
+    [pol_pos_d[i] for i in range(len(pol_pos_d))]
+)  # desired polarizer pos [cts]
+
 
 # NOTE: ^ is just a .py file, you will need it in the same directory as this file
 # NOTE: to run the above scripts you also need seabreeze package and pyserial
 # NOTE: to install thorlabs_apt_device and seabreeze see line below
-# pip install --upgrade thorlabs_apt_device
-# conda install -c conda-forge seabreeze
+
 
 # currently this only works for TDC001 connected to a PRM1Z8 any other devices will have to be added in future
 
@@ -27,184 +92,98 @@ a = 65536.0  # extra factor to when converting velocity and acceleration
 # NOTE: serial number for TDC001 should be '83------'. however, adam's wasnt but stil worked, just watch out
 # NOTE: need 0 <= intial and final position of polarizer <=360 [deg]
 # NOTE: this assumes that the spectrograph's .getspec() program gets the same number of wavelengths each time
-# NOTE: encoding utf-8
 # NOTE: will not allow overwriting for files, if you dont change the name it was throw an error and youll have to take the data again
 
 # print dict of important values so that they can be double checked
 # list devices so you can find the controller
 # things not included: motor pid/vid/serial#, any other spectrograph inputs
 
-# replace the word input with the required information
-inputs = {
-    "motor_port": "input",  # motor port location (str)
-    "intial_pos": "input",  # waveplates inital position [deg] (float), background data taken at this position
-    "final_position": "input",  # waveplates final position [deg] (float)
-    "step": "input",  # angular distance traveled between each spectrograph measurement [deg] (float)
-    "specSN": "input",  # spectrograph serial # (str)
-    "spec_int_time": "input",  # spectrograph integration time [msec] (int?)
-    "fname": "input",  # file name that data will saved under (str), MUST BE A .txt file
-    "path": "input",  # relative path to directory you would like the file saved to (str)
-}
-print("Here is a list of devices that may help")
+
+print("Devices visible to aptdevice: ")
 print(apt.devices.aptdevice.list_devices())
-print(
-    "Checking the inputs dict that the nessecary inputs are correct to run this program"
-)
-print("If any entries are still are still just str(input) its gonna throw an error")
-for i in inputs:
-    if inputs[i] == "input":
-        raise Exception("nice try mf, input values need to be entered already")
-# do assertion errors for inputs
-assert type(inputs["motor_port"]) == str, "motor_port input must be a str"
-assert isinstance(
-    inputs["intial_pos"], (float, int)
-), "intial_pos input must be a float or int"
-assert isinstance(
-    inputs["final_position"], (float, int)
-), "final_position input must be a float or int"
-assert isinstance(inputs["step"], (float, int)), "step input must be float or int"
-assert isinstance(inputs["specSN"], str), "specSN input must be str"
-assert isinstance(
-    inputs["spec_int_time"], (float, int)
-), "spec_int_time input must be float or int"
-assert isinstance(inputs["fname"], str), "fname input must be str"
-assert isinstance(inputs["path"], str), "path input must be str"
+
 
 # now connect to the machines
 # connect to motor first as 'intial_pos' will be the polarization taken for background data
 try:
-    mtr = apt.devices.tdc001.TDC001(serial_port=inputs["motor_port"])
+    motor = apt.devices.tdc001.TDC001(serial_port=inputs.motor_port)
+    atexit.register(motor.close())
 except:
     raise Exception("an error occured while trying to connect to the motor")
 else:
     time.sleep(30.0)
+
 # check for the motor connected status, if it starts off as True just continue code, or move and re-home and double check
-mtr_connection = utility.is_mtr_connected(
-    mtr
-)  # status if the motor is connected (bool), must always be true
-if mtr_connection == False:
+if not utility.is_mtr_connected(motor):
     print("estabishing connection with motor, one moment please")
     # move 5 degrees, sleep, and then move back
-    mtr.move_absolute(utility.from_d(5.0))
+    motor.move_absolute(utility.from_d(5.0))
     time.sleep(5.0)
-    mtr.move_absolute(utility.from_d(0.0))
+    motor.move_absolute(utility.from_d(0.0))
     time.sleep(5.0)
 # now double check motor connection, if true yay keep going, else send it back to adam for fixin
-mtr_connection = utility.is_mtr_connected(mtr)
-if mtr_connection:
-    print("motor connection established!")
-else:
-    mtr.close()
+if not utility.is_mtr_connected(motor):
     raise Exception("motor connection not established, debugging required")
+print("motor connection established!")
+
 print("time to collect background!")
-mtr.register_error_callback(utility.error_callback)
-# now move to motor to initial position and generate background
+motor.register_error_callback(utility.error_callback)
+
+# now move to motor to initial angle and generate background
 # once background is generated, create array so the rest of the data can be easily stored
-# NEED TO FIX POL POS D
-pol_pos_d = np.arange(
-    inputs["intial_pos"],
-    (inputs["final_position"] + inputs["step"]),
-    inputs["step"],
-    dtype=float,
-)  # desired polarizer positions [deg]
-pol_pos_cts = np.array(
-    [pol_pos_d[i] for i in range(len(pol_pos_d))]
-)  # desired polarizer pos [cts]
-# move polarizer to first position
-mtr.move_absolute(pol_pos_cts[0])
+motor.move_absolute(pol_pos_cts[0])
 time.sleep(3)
 # connect to spectrograph and set integration time
 try:
-    spectrum = spectro.ocean(inputs["specSN"])
+    spectrum = spectro.ocean(inputs.specSN)
+    atexit.register(spectrum.close())
 except:
-    mtr.close()
     raise Exception("cannot make connection to spectrograph, program ending")
 # this is just what the original dscan does, not sure why tho
 try:
-    spectrum.setinttime(inputs["spec_int_time"])
+    spectrum.setinttime(inputs.spec_int_time)
 except:
     print("except")
-    spectrum.setinttime(inputs["spec_int_time"])
+    spectrum.setinttime(inputs.spec_int_time)
 time.sleep(2.0)
+
 input("press enter to capture background")
-bkg = spectrum.getspec()  # background
-# spectrum.getspec() - 2xN list?, float - 1st row is N wavelengths [nm?], 2nd is intensity [counts]
-# create array to save all data, assuming spectrograph collects the same wavelength every time spectrum.getspec() is ran
-# format: Nx(M+2) array, [[wvl],[bkg],[I(1st pol pos)],...,[I(ith pol pos)],...,[I(Nth pol pos)]]
-# where wvl,bkg,I(pos) Nx1 col arrays
-data = np.zeros((len(bkg[0]), (len(pol_pos_d) + 2)), dtype=float)
-# now place the background and wvl in the first two columns
-data[:, 0] = bkg[0]
-data[:, 1] = bkg[1]
+# spectrum.getspec() - 2xN list, float - 1st row is N wavelengths [nm], 2nd is intensity [counts]
+background = spectrum.getspec()
+
+f.write("Wavelengths (nm)\n")
+wavelengths = background[0]
+np.savetxt(f, wavelengths)
+f.write("Background (counts)\n")
+np.savetxt(f, background[1])
+
 # now to collect the rest of the data
-input("press enter to begin collecting data")
-# if checks are failed, have a vari that if we had to break the loop it will just end the program after the loop
-did_break = False
+input("Press enter to begin collecting data...")
 for i in range(len(pol_pos_cts)):
     # check connection every time
-    mtr_connection = utility.is_mtr_connected(mtr)
+    mtr_connection = utility.is_mtr_connected(motor)
     if mtr_connection:
-        mtr.move_absolute(pol_pos_cts[i])
+        motor.move_absolute(pol_pos_cts[i])
         print("moving to", pol_pos_d[i], "deg")
         time.sleep(5.0)
-        # check polarizer pos isnt drifting
-        drift = np.isclose(pol_pos_d[i], utility.to_d(mtr.status["position"]), atol=0.2)
-        if drift == False:
-            print("polarizer has drifted from desired values, ending collection")
-            did_break = True
-            mtr.close()
-            spectrum.close()
-            break
+        # check that polarizer angle isn't drifting
+        drift = not np.isclose(
+            pol_pos_d[i], utility.to_d(motor.status["position"]), atol=0.2
+        )
+        if drift:
+            raise Exception(
+                "polarizer has drifted from desired values, ending collection"
+            )
     else:
-        print("polarizer connection lost, ending collection")
-        did_break = True
-        mtr.close()
-        spectrum.close()
-        break
+        raise Exception("Polarizer connection lost, ending collection")
     print("collecting")
-    x = spectrum.getspec()
+    spectrometer_output = spectrum.getspec()
     # check that wavelengths havent changed
-    if np.allclose(x[0], data[:, 0]) == False:
-        print(
+    if np.allclose(spectrometer_output[0], wavelengths) == False:
+        raise Exception(
             "spectrograph is has collected different spectral range, ending collection"
         )
-        did_break = True
-        mtr.close()
-        spectrum.close()
-        break
-    # put the new data into the array
-    data[:, (2 + i)] = x[1]
-# check if loop had to break
-if did_break:
-    print("an error occured during the collection, nothing has been saved")
-    mtr.close()
-    spectrum.close()
-    raise Exception("see above for specific issue, ending program")
-else:
-    print("collection finished, saving data, closing machine connections")
-    mtr.close()
-    spectrum.close()
-# using np.savetxt, so estabilish headers and such
-cmt = (
-    "file was created at:"
-    + time.asctime()
-    + "\n"
-    + "polarizer positions [deg]:\n"
-    + str(pol_pos_d)
-)
-# open file, will not overwrite!
-try:
-    with open(inputs["path"] + inputs["fname"], "x", encoding="utf-8") as f:
-        np.savetxt(f, data, delimiter=",", header=cmt, encoding="utf=8")
-except FileExistsError:
-    print("this file name already exisits, i wont let you overwrite your data!")
-    new_fname = input("please put a new (unused) file name here:")
-    with open(f, "x", encoding="utf-8") as f:
-        np.savetxt(
-            inputs["path"] + new_fname,
-            data,
-            delimiter=",",
-            header=cmt,
-            encoding="utf-8",
-        )
-print("saving completed, have a nice day :)")
+    np.savetxt(f, spectrometer_output[1])
+
+
+print("Data collection finished")

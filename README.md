@@ -6,9 +6,16 @@ by Adam Fisher
 
 Currently there is only support for interfacing with only the Thorlabs TDC001 motorized stage controller connected to a Thorlabs PRM1Z8 rotating polarizer and the Ocean Optics SpectraPro HRS-300 spectrometer
 
-Third Party Dependencies: thorlabs_apt_device and seabreeze (links below)
+## Third Party Dependencies
+
+thorlabs_apt_device and seabreeze (links below)
 APT: <https://thorlabs-apt-device.readthedocs.io/en/latest/index.html>
 Seabreeze: <https://python-seabreeze.readthedocs.io/en/latest/index.html>
+oceanOpticSpectrosco, which is just a python file that needs to be in top level directory
+
+To install:
+pip install --upgrade thorlabs_apt_device
+conda install -c conda-forge seabreeze
 
 ## Please read the .py script before running
 
@@ -21,10 +28,6 @@ but the background measurement is sandwiched between two user inputs (press ente
 
 ## How is Data Saved
 
-data is saved as a .txt file with utf-8 encoding, you are required to set the file name and its destination.
-
-the file name you use MUST NOT be present in the destination directory, if it is you have the option to rename the file
+data is saved as a .tsv file, you are required to specify the file name and its destination.
 
 there is a header that has the time the file was created and the array of positions of the polarizer when data was collected [degress]. They have the '#' character in front to be compatible with numpy.loadtxt or numpy.genfromtxt
-
-format: Nx(M+2) array of comma seperated values, [[wvl],[bkg],[I(1st pol pos)],...,[I(ith pol pos)],...,[I(Nth pol pos)]]. where N is the number of data points that the spectrograph collects and M is the number of angles that the polarizer will rotate to, wvl,bkg,I(pos) Nx1 col arrays
