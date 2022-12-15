@@ -1,1 +1,9 @@
---test why
+--motor_port COM4
+--initial_angle 0.
+--final_angle 360.
+--step 2.
+--wait 6.
+--spectrometer_serial HR4P0326
+--spectrometer_integration_time 1500.
+--path ./Data/
+--fname test.tsv

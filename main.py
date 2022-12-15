@@ -3,11 +3,9 @@
 # moving motorized thorlabs waveplate while also collecting spectra
 # import utility
 import numpy as np
-
-# import thorlabs_apt_device as apt
+import thorlabs_apt_device as apt
 import time
-
-# import oceanOpticSpectrosco as spectro
+import oceanOpticSpectrosco as spectro
 import atexit
 import pathlib
 import argparse
@@ -20,50 +18,69 @@ class LoadFromFile(argparse.Action):
 
         # parse arguments in the file and store them in a blank namespace
         data = parser.parse_args(contents.split(), namespace=None)
+        print(vars(data).items())
         for k, v in vars(data).items():
             # set arguments in the target namespace if they haven’t been set yet
-            if getattr(namespace, k, None) is not None:
+            if getattr(namespace, k, None) is None:
                 setattr(namespace, k, v)
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--motor_port", type=str, help="motor port location")
+parser.add_argument(
+    "--config-file", type=open, action=LoadFromFile, help="Specify input file"
+)
+parser.add_argument(
+    "--motor_port",
+    type=str,
+    help="motor port location",
+)
 parser.add_argument(
     "--initial_angle",
     type=float,
     help="inital motor angle (degrees), background data taken at this position, must be in [0,360]",
 )
 parser.add_argument(
-    "--final_angle", type=float, help="waveplates final angle (degrees)"
+    "--final_angle",
+    type=float,
+    help="waveplates final angle (degrees)",
 )
 parser.add_argument(
     "--step",
     type=float,
     help="angular distance traveled between each spectrograph measurement (degrees)",
 )
-parser.add_argument("--specSN", type=str, help="spectrograph serial number")
 parser.add_argument(
-    "--spec_int_time", type=float, help="spectrograph integration time (msec)"
+    "--wait", type=float, help="dwell time between polarization changes"
 )
 parser.add_argument(
-    "--fname",
+    "--spectrometer_serial",
     type=str,
-    help="file name that data will saved under (str), MUST BE A .txt file",
+    help="spectrograph serial number",
+)
+parser.add_argument(
+    "--spectrometer_integration_time",
+    type=float,
+    help="spectrograph integration time (msec)",
 )
 parser.add_argument(
     "--path",
     type=str,
     help="relative path to directory you would like the file saved to",
 )
-parser.add_argument("--file", type=open, action=LoadFromFile, help="Specify input file")
-inputs = parser.parse_args()
+parser.add_argument(
+    "--fname",
+    type=str,
+    help="file name that data will saved under",
+)
 
-print(inputs)
+settings = parser.parse_args()
+
+print(settings)
 
 
 # open file, will not overwrite!
 try:
-    f = open(inputs.path + inputs.fname, "wb")
+    f = open(settings.path + settings.fname, "wb")
     atexit.register(f.close())
 except FileExistsError:
     raise Exception("The selected file name already exists!")
@@ -73,7 +90,7 @@ f.write("Polarizer angles [deg]:\n")
 
 # NEED TO FIX POL POS D
 pol_pos_d = np.arange(
-    inputs.intial_angle, (inputs.final_angle + inputs.step), inputs.step
+    settings.intial_angle, (settings.final_angle + settings.step), settings.step
 )  # desired polarizer positions [deg]
 pol_pos_cts = np.array(
     [pol_pos_d[i] for i in range(len(pol_pos_d))]
@@ -112,7 +129,7 @@ print(apt.devices.aptdevice.list_devices())
 # now connect to the machines
 # connect to motor first as 'intial_pos' will be the polarization taken for background data
 try:
-    motor = apt.devices.tdc001.TDC001(serial_port=inputs.motor_port)
+    motor = apt.devices.tdc001.TDC001(serial_port=settings.motor_port)
     atexit.register(motor.close())
 except:
     raise Exception("an error occured while trying to connect to the motor")
@@ -141,16 +158,16 @@ motor.move_absolute(pol_pos_cts[0])
 time.sleep(3)
 # connect to spectrograph and set integration time
 try:
-    spectrum = spectro.ocean(inputs.specSN)
+    spectrum = spectro.ocean(settings.spectrometer_serial)
     atexit.register(spectrum.close())
 except:
     raise Exception("cannot make connection to spectrograph, program ending")
 # this is just what the original dscan does, not sure why tho
 try:
-    spectrum.setinttime(inputs.spec_int_time)
+    spectrum.setinttime(settings.spectrometer_integration_time)
 except:
     print("except")
-    spectrum.setinttime(inputs.spec_int_time)
+    spectrum.setinttime(settings.spectrometer_integration_time)
 time.sleep(2.0)
 
 input("press enter to capture background")
