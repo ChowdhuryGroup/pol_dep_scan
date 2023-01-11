@@ -1,7 +1,7 @@
 # motorized polarizer programs to be used with Thorlabs TDC001+PRM1-Z8
 # see readme and other .py file for better documentation
 # boilerplate
-from mimetypes import init
+from mimetypes import init # not sure wtf this is
 import numpy as np
 from functools import partial
 import thorlabs_apt_device as apt

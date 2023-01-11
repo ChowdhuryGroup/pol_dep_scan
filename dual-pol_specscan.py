@@ -1,21 +1,26 @@
-# moving motorized thorlabs waveplate while also collecting spectra
-# just need to run this file, no program calls nessecary
-# for polarization dep SHG measurements
-# by Adam Fisher
-# import packages, double check you have all of these installed
+# program to automate synchonized movement of two motorized waveplates (Thorlabs PRM1Z8, Newport URS50) and spectroscopic data collection (Ocean Optics SpectraPro HRS-300)
+# this is done by interfacing with the waveplates' controller (Thorlabs TDC001, Newport CONEX-CC hard wired to wvplt)
+# for polarization dependant spectroscopic measurements (SHG)
+
+# By Adam Fisher
+# further documentation is in README
+
+# double check you have these packages
 import numpy as np
 from functools import partial
 import thorlabs_apt_device as apt
+from pylablib.devices import Thorlabs as tl
 import time
-import oceanOpticSpectrosco as spectro 
+import oceanOpticSpectrosco as spectro
 # NOTE: ^ is just a .py file, you will need it in the same directory as this file
 # NOTE: to run the above scripts you also need seabreeze package and pyserial
 # NOTE: to install thorlabs_apt_device and seabreeze see line below
 # pip install --upgrade thorlabs_apt_device
 # conda install -c conda-forge seabreeze
+# conda install -c conda-forge pylablib
+# ^ double check you have installed all dependancies before using (check documentation)
 
-# currently this only works for TDC001 connected to a PRM1Z8 any other devices will have to be added in future
-
+# apt conversion for TDC001 + PRM1Z8
 # build conversions for encoder cts (what APT/motor knows) to real units
 # TDC001 + PRM1-Z8 factor (f) and time step (t)
 t = 2048/(6e6) # sampling time 
@@ -57,33 +62,44 @@ to_dps.__doc__ = 'partial funct takes in angle velocity [cts/s] and converts to 
 to_dpss = partial(to_angacc,factor=f,T=t)
 to_dpss.__doc__ = 'partial funct takes in angle acceleration [cts/s^2] and converts to angle acceleration [deg/s^2]'
 
-# other helper functions
-def is_mtr_connected(motor):
+# apt helper functions
+def is_apt_connected(motor):
 	'returns bool value of motor.status["motor_connected"], just input APT device object'
 	return motor.status['motor_connected']
 
-# in case the motor throws an error
+# in case the apt motor throws an error
 def error_callback(source,msgid,code,notes):
 	print(f"Device {source} reported error code{code}: {note}")
 
-# NOTE: MUST use some sort of iteration method if you wish to use conversion functions with numpy arrays
-# NOTE: this script will connect to controller will intialize and exit once it is over to prevent bad errors
-# NOTE: serial number for TDC001 should be '83------'. however, adam's wasnt but stil worked, just watch out
-# NOTE: need 0 <= intial and final position of polarizer <=360 [deg]
-# NOTE: this assumes that the spectrograph's .getspec() program gets the same number of wavelengths each time
-# NOTE: encoding utf-8
-# NOTE: will not allow overwriting for files, if you dont change the name it was throw an error and youll have to take the data again
-# NOTE: if 0.<step<80. then wait > 10 sec, if if 80<step<=180 then wait > 20sec 
+#  pylablib help funct
+def is_pll_connected(motor):
+	'does get_status to returns bool value of pylablib motor, true if enabled, false otherwise'
+	sts = motor.get_status()
+	if 'enabled' in sts:
+		connect = True
+	else:
+		connect = False
+	return connect
 
-# print dict of important values so that they can be double checked
-# list devices so you can find the controller
-# things not included: motor pid/vid/serial#, any other spectrograph inputs
 
-# replace the word input with the required information
+# printing device list and input's dict keys
+print('here is some device info for you')
+print(apt.devices.aptdevice.list_devices())
+print(tl.list_kinesis_devices())
+
+# NOTE: going to decide front/back by com port
+# NOTE: need to know which motor is which for connection purposes
+# NOTE: keep the pol controlled by the TDC001 in FRONT, switch is not supported currently (1/9/23)
+# NOTE: dont actually need port of KDC101, just serial # which is 27263055
+
+# replace the word input with required information
 inputs = {
-	'motor_port': 'input', # motor port location (str)
-	'intial_pos': 'input', # waveplates inital position [deg] (float), background data taken at this position
-	'final_position': 'input', # waveplates final position [deg] (float)
+	'front_port': 'input', # front pol port location (str)
+	'TDC_front': 'input', # is the pol controlled by the TDC001 the front pol (bool)
+	'KDC_SN': 'input', # KDC101 serial number, should be back pol (str)
+	'intial_pos': 'input', # front waveplates inital position [deg] (float), background data taken at this position
+	'final_position': 'input', #  front waveplates final position [deg] (float)
+	'offset': 'input', # orientation of back pol w.r.t front pol [deg] (float)
 	'step': 'input', # angular distance traveled between each spectrograph measurement [deg] (float)
 	'wait': 'input', # wait time [sec] before pol moves again (float or int)
 	'specSN': 'input', # spectrograph serial # (str)
@@ -91,78 +107,100 @@ inputs = {
 	'fname': 'input', # file name that data will saved under (str), MUST BE A .txt file
 	'path': 'input' # relative path to directory you would like the file saved to (str)
 }
-print('Here is a list of devices that may help')
-print(apt.devices.aptdevice.list_devices())
-print('Checking the inputs dict that the nessecary inputs are correct to run this program')
-print('If any entries are still are still just str(input) its gonna throw an error')
+
+print('checking that the input dictionary has been filled out correctly')
 for i in inputs:
 	if (inputs[i]=='input'):
 		raise Exception('nice try mf, input values need to be entered already')
 # do assertion errors for inputs
-assert(type(inputs['motor_port'])==str), 'motor_port input must be a str'
+assert(type(inputs['front_port'])==str), 'front_port input must be a str'
+assert(inputs['TDC_front']), 'TDC must be in front'
+assert(isinstance(inputs['KDC_SN'],str)), 'KDC serial number input must be str'
 assert(isinstance(inputs['intial_pos'],(float,int))), 'intial_pos input must be a float or int'
 assert(isinstance(inputs['final_position'],(float,int))), 'final_position input must be a float or int'
 assert(isinstance(inputs['step'],(float,int))), 'step input must be float or int'
+assert(isinstance(inputs['wait'],(float,int))), 'wait input must be float or int'
 if (inputs['step']<80.):
 	assert(inputs['wait']>=10.), 'wait has gotta be longer champ'
 elif (80.<inputs['step']<180.):
 	assert(inputs['wait']>=20.), 'wait has gotta be longer champ'
-assert(isinstance(inputs['wait'],(float,int))), 'wait input must be float or int'
+assert(isinstance(inputs['offset'],(float,int))), 'offset input must be float or int'
 assert(isinstance(inputs['specSN'],str)), 'specSN input must be str'
 assert(isinstance(inputs['spec_int_time'],(float,int))), 'spec_int_time input must be float or int'
 assert(isinstance(inputs['fname'],str)), 'fname input must be str'
 assert(isinstance(inputs['path'],str)), 'path input must be str'
 
-# now connect to the machines
-# connect to motor first as 'intial_pos' will be the polarization taken for background data
+# now connect to machines
+# front pol
+print('connecting to front motor, one minute please')
 try:
-	mtr = apt.devices.tdc001.TDC001(serial_port=inputs['motor_port'])
+	frnt = apt.devices.tdc001(serial_port=inputs['front_port'])
 except:
-	mtr.close()
-	raise Exception('an error occured while trying to connect to the motor')
+	frnt.close()
+	raise Exception('an error occured while trying to connect to TDC001')
 else:
-	time.sleep(30.)
-# check for the motor connected status, if it starts off as True just continue code, or move and re-home and double check
-mtr_connection = is_mtr_connected(mtr) # status if the motor is connected (bool), must always be true
-if (mtr_connection==False):
-	print('estabishing connection with motor, one moment please')
-	# move 5 degrees, sleep, and then move back
-	mtr.move_absolute(from_d(5.))
+	time.sleep(60.)
+# check connection status of front motor
+frnt_connection = is_apt_connected(frnt)
+if (frnt_connection==False):
+	print('checking front motor connection')
+	frnt.move_relative(from_d(5.))
 	time.sleep(5.)
-	mtr.move_absolute(from_d(0.))
+	frnt.move_absolute(from_d(0.))
 	time.sleep(5.)
-# now double check motor connection, if true yay keep going, else send it back to adam for fixin
-mtr_connection = is_mtr_connected(mtr)
-if (mtr_connection):
-	print('motor connection established!')
+frnt_connection = is_mtr_connected(frnt)
+if (frnt_connection):
+	print('front motor connection established!')
 else:
-	mtr.close()
-	raise Exception('motor connection not established, debugging required')
-print('time to collect background!')
-mtr.register_error_callback(error_callback)
-# now move to motor to initial position and generate background
-# once background is generated, create array so the rest of the data can be easily stored
-# NEED TO FIX POL POS D
-pol_pos_d = np.arange(inputs['intial_pos'],(inputs['final_position']+inputs['step']),inputs['step'],dtype=float) # desired polarizer positions [deg]
-pol_pos_cts = np.array([pol_pos_d[i] for i in range(len(pol_pos_d))]) # desired polarizer pos [cts]
-# move polarizer to first position 
-mtr.move_absolute(pol_pos_cts[0])
-time.sleep(3)
-# connect to spectrograph and set integration time
+	frnt.close()
+	raise Exception('could not establish connection to front motor, debugging required')
+frnt.register_error_callback(error_callback)
+
+
+print('connecting to back motor, one minute please')
+try:
+	bck = tl.KinesisMotor('27263055',scale='stage')
+	bck.home()
+except:
+	bck.close()
+	raise Exception('an error occured while trying to connect to KDC101')
+else:
+	time.sleep(60.)
+# check connection status of back motor
+bck_connection = is_pll_connected(bck)
+if (bck_connection):
+	print('back motor connection established!')
+else:
+	bck.close()
+	raise Exception('could not establish connection with back motor, debugging required')
+
+print('connecting to spectrograph')
 try:
 	spectrum = spectro.ocean(inputs['specSN'])
 except:
-	mtr.close()
-	raise Exception('cannot make connection to spectrograph, program ending')
-# this is just what the original dscan does, not sure why tho
+	frnt.close()
+	bck.close()
+	raise Exception('cannot connect to spectrograph, program ending')
+# this is what original dscan does, idk why tho
 try:
 	spectrum.setinttime(inputs['spec_int_time'])
 except:
 	print('except')
 	spectrum.setinttime(inputs['spec_int_time'])
 time.sleep(2.)
-input('press enter to capture background')
-bkg = spectrum.getspec() # background
+
+# moving pols to their starting pos and taking background
+pol_pos_d = np.arange(inputs['intial_pos'],(inputs['final_position']+inputs['step']),inputs['step'],dtype=float) # desired polarizer positions [deg]
+pol_pos_cts = np.array([pol_pos_d[i] for i in range(len(pol_pos_d))]) # desired polarizer pos [cts]
+pol_pos_bck = pol_pos_d + inputs['offset']
+
+print('time to collect background')
+frnt.move_absolute(pol_pos_cts[0])
+bck.move_to(pol_pos_bck[0])
+time.sleep(5.)
+
+input('press enter to collect background')
+bkg = spectrum.getspec() 
 # spectrum.getspec() - 2xN list?, float - 1st row is N wavelengths [nm?], 2nd is intensity [counts]
 # create array to save all data, assuming spectrograph collects the same wavelength every time spectrum.getspec() is ran
 # format: Nx(M+2) array, [[wvl],[bkg],[I(1st pol pos)],...,[I(ith pol pos)],...,[I(Nth pol pos)]]
@@ -176,56 +214,57 @@ input('press enter to begin collecting data')
 # if checks are failed, have a vari that if we had to break the loop it will just end the program after the loop
 did_break = False
 for i in range(len(pol_pos_cts)):
-	# check connection every time
-	mtr_connection = is_mtr_connected(mtr)
-	if (mtr_connection):
-		mtr.move_absolute(pol_pos_cts[i])
-		print('moving to',pol_pos_d[i],'deg')
+	# check connections every time
+	frnt_connection = is_apt_connected(frnt)
+	bck_connection = is_pll_connected(bck)
+	if (frnt_connection and bck_connection):
+		print('moving to ', pol_pos_d[i], ' and ',pol_pos_bck[i],' deg')
+		frnt.move_absolute(pol_pos_cts[i])
+		bck.move_to(pol_pos_bck[i])
 		time.sleep(inputs['wait'])
-		# check polarizer pos isnt drifting
-		drift = np.isclose(pol_pos_d[i],to_d(mtr.status['position']),atol=0.2)
-		if (drift==False):
-			print('polarizer has drifted from desired values, ending collection')
+		# check pol drift
+		df = np.isclose(pol_pos_d[i],to_d(frnt.status['position']),atol=0.2)
+		db = np.isclose(pol_pos_bck[i],bck.get_position(),atol=0.2)
+		if (df==False) or (db==False):
+			print('a polarizer has drifted from desired values, ending collection')
 			did_break = True
-			mtr.close()
-			spectrum.close()
-			break 
+			break
 	else:
-		print('polarizer connection lost, ending collection')
+		print('connection a polarizer was lost, ending collection')
 		did_break = True
-		mtr.close()
-		spectrum.close()
 		break
 	print('collecting')
 	x = spectrum.getspec()
-	# check that wavelengths havent changed
+	# check its collecting the same spectrum
 	if (np.allclose(x[0],data[:,0])==False):
-		print('spectrograph is has collected different spectral range, ending collection')
+		print('spectrograph has collected different spectral range, ending collection')
 		did_break = True
-		mtr.close()
-		spectrum.close()
 		break
-	# put the new data into the array
+	# put new data into array
 	data[:,(2+i)] = x[1]
-# check if loop had to break 
+# check if loop was exited early
 if (did_break):
-	print('an error occured during the collection, nothing has been saved')
-	mtr.close()
+	print('an error occured during collection, nothing has been saved, closing connections')
+	frnt.close()
+	bck.close()
 	spectrum.close()
 	raise Exception('see above for specific issue, ending program')
 else:
-	print('collection finished, saving data, closing machine connections')
-	mtr.close()
+	print('collection finished, saving data, closing connections')
+	frnt.close()
+	bck.close()
 	spectrum.close()
-# using np.savetxt, so estabilish headers and such
-cmt = 'file was created at:' + time.asctime()+'\n' + 'polarizer positions [deg]:\n' + str(pol_pos_d)
-# open file, will not overwrite!
+# using np.savetxt, set up headers
+cmt = 'file was created at: ' + time.asctime()+'\n' + 'back polarizer was offset by: ' + str(inputs['offset'])+'\n' + 'front polarizer positions [deg]:\n' + str(pol_pos_d)
+# open file, will not overwrite
 try:
 	with open(inputs['path']+inputs['fname'],'x',encoding='utf-8') as f:
-		np.savetxt(f,data,delimiter=',',header=cmt,encoding='utf=8')
+		np.savetxt(f,data,delimiter=',',header=cmt,encoding='utf-8')
 except FileExistsError:
-	print('this file name already exisits, i wont let you overwrite your data!')
-	new_fname = input('please put a new (unused) file name here:')
+	print('this file already exists, i wont let you overwrite your data!')
+	new_fname = input('please put unused file name here:')
+	if (new_fname.[-4:]!='.txt'):
+		new_fname += '.txt'
 	with open(inputs['path']+new_fname,'x',encoding='utf-8') as g:
 		np.savetxt(g,data,delimiter=',',header=cmt,encoding='utf-8')
 print('saving completed, have a nice day :)')
