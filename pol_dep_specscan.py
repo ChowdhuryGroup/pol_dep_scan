@@ -80,14 +80,15 @@ def error_callback(source,msgid,code,notes):
 
 # replace the word input with the required information
 inputs = {
-	'motor_port': 'input' # motor port location (str)
-	'intial_pos': 'input' # waveplates inital position [deg] (float), background data taken at this position
-	'final_position': 'input' # waveplates final position [deg] (float)
-	'step': 'input' # angular distance traveled between each spectrograph measurement [deg] (float)
-	'specSN': 'input' # spectrograph serial # (str)
-	'spec_int_time': 'input' # spectrograph integration time [msec] (int?)
-	'fname': 'input' # file name that data will saved under (str), MUST BE A .txt file
-	'path': 'input' # relative path to directory you would like the file saved to (str)
+	'motor_port': 'COM4', # motor port location (str)
+	'intial_pos': 0., # waveplates inital position [deg] (float), background data taken at this position
+	'final_position': 360., # waveplates final position [deg] (float)
+	'step': 2., # angular distance traveled between each spectrograph measurement [deg] (float)
+	'wait': 6., # time to wait between the polarizer moving and the spectrometer taking the data [sec] (float)
+	'specSN': 'HR4P0326', # spectrograph serial # (str)
+	'spec_int_time': 1500, # spectrograph integration time [msec] (int?)
+	'fname': '50khoriz 1500ms.txt', # file name that data will saved under (str), MUST BE A .txt file
+	'path': './Data/' # relative path to directory you would like the file saved to (str)
 }
 print('Here is a list of devices that may help')
 print(apt.devices.aptdevice.list_devices())
@@ -101,6 +102,7 @@ assert(type(inputs['motor_port'])==str), 'motor_port input must be a str'
 assert(isinstance(inputs['intial_pos'],(float,int))), 'intial_pos input must be a float or int'
 assert(isinstance(inputs['final_position'],(float,int))), 'final_position input must be a float or int'
 assert(isinstance(inputs['step'],(float,int))), 'step input must be float or int'
+assert(isinstance(inputs['wait'],(float,int))), 'wait input must be a float or int'
 assert(isinstance(inputs['specSN'],str)), 'specSN input must be str'
 assert(isinstance(inputs['spec_int_time'],(float,int))), 'spec_int_time input must be float or int'
 assert(isinstance(inputs['fname'],str)), 'fname input must be str'
@@ -114,16 +116,16 @@ except:
 	mtr.close()
 	raise Exception('an error occured while trying to connect to the motor')
 else:
-	time.sleep(30.)
+	time.sleep(60.)
 # check for the motor connected status, if it starts off as True just continue code, or move and re-home and double check
 mtr_connection = is_mtr_connected(mtr) # status if the motor is connected (bool), must always be true
 if (mtr_connection==False):
 	print('estabishing connection with motor, one moment please')
 	# move 5 degrees, sleep, and then move back
-	mtr.move_absolute(from_d(5.))
-	time.sleep(5.)
+	mtr.move_relative(from_d(5.))
+	time.sleep(10.)
 	mtr.move_absolute(from_d(0.))
-	time.sleep(5.)
+	time.sleep(10.)
 # now double check motor connection, if true yay keep going, else send it back to adam for fixin
 mtr_connection = is_mtr_connected(mtr)
 if (mtr_connection):
@@ -137,10 +139,10 @@ mtr.register_error_callback(error_callback)
 # once background is generated, create array so the rest of the data can be easily stored
 # NEED TO FIX POL POS D
 pol_pos_d = np.arange(inputs['intial_pos'],(inputs['final_position']+inputs['step']),inputs['step'],dtype=float) # desired polarizer positions [deg]
-pol_pos_cts = np.array([pol_pos_d[i] for i in range(len(pol_pos_d))]) # desired polarizer pos [cts]
+pol_pos_cts = np.array([from_d(pol_pos_d[i]) for i in range(len(pol_pos_d))]) # desired polarizer pos [cts]
 # move polarizer to first position 
 mtr.move_absolute(pol_pos_cts[0])
-time.sleep(3)
+time.sleep(10)
 # connect to spectrograph and set integration time
 try:
 	spectrum = spectro.ocean(inputs['specSN'])
@@ -174,7 +176,7 @@ for i in range(len(pol_pos_cts)):
 	if (mtr_connection):
 		mtr.move_absolute(pol_pos_cts[i])
 		print('moving to',pol_pos_d[i],'deg')
-		time.sleep(5.)
+		time.sleep(inputs['wait'])
 		# check polarizer pos isnt drifting
 		drift = np.isclose(pol_pos_d[i],to_d(mtr.status['position']),atol=0.2)
 		if (drift==False):
@@ -221,4 +223,4 @@ except FileExistsError:
 	new_fname = input('please put a new (unused) file name here:')
 	with open(f,'x',encoding='utf-8') as f:
 		np.savetxt(inputs['path']+new_fname,data,delimiter=',',header=cmt,encoding='utf-8')
-print('saving completed, have a nice day :)')
+print('saving completed, have a nice day :) love AF')
