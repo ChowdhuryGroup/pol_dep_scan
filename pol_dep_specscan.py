@@ -73,6 +73,7 @@ def error_callback(source,msgid,code,notes):
 # NOTE: this assumes that the spectrograph's .getspec() program gets the same number of wavelengths each time
 # NOTE: encoding utf-8
 # NOTE: will not allow overwriting for files, if you dont change the name it was throw an error and youll have to take the data again
+# NOTE: if 0.<step<80. then wait > 10 sec, if if 80<step<=180 then wait > 20sec 
 
 # print dict of important values so that they can be double checked
 # list devices so you can find the controller
@@ -102,7 +103,11 @@ assert(type(inputs['motor_port'])==str), 'motor_port input must be a str'
 assert(isinstance(inputs['intial_pos'],(float,int))), 'intial_pos input must be a float or int'
 assert(isinstance(inputs['final_position'],(float,int))), 'final_position input must be a float or int'
 assert(isinstance(inputs['step'],(float,int))), 'step input must be float or int'
-assert(isinstance(inputs['wait'],(float,int))), 'wait input must be a float or int'
+if (inputs['step']<80.):
+	assert(inputs['wait']>=10.), 'wait has gotta be longer champ'
+elif (80.<inputs['step']<180.):
+	assert(inputs['wait']>=20.), 'wait has gotta be longer champ'
+assert(isinstance(inputs['wait'],(float,int))), 'wait input must be float or int'
 assert(isinstance(inputs['specSN'],str)), 'specSN input must be str'
 assert(isinstance(inputs['spec_int_time'],(float,int))), 'spec_int_time input must be float or int'
 assert(isinstance(inputs['fname'],str)), 'fname input must be str'
@@ -221,6 +226,6 @@ try:
 except FileExistsError:
 	print('this file name already exisits, i wont let you overwrite your data!')
 	new_fname = input('please put a new (unused) file name here:')
-	with open(f,'x',encoding='utf-8') as f:
-		np.savetxt(inputs['path']+new_fname,data,delimiter=',',header=cmt,encoding='utf-8')
-print('saving completed, have a nice day :) love AF')
+	with open(inputs['path']+new_fname,'x',encoding='utf-8') as g:
+		np.savetxt(g,data,delimiter=',',header=cmt,encoding='utf-8')
+print('saving completed, have a nice day :)')
