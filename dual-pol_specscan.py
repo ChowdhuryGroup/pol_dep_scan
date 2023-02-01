@@ -25,7 +25,7 @@ import oceanOpticSpectrosco as spectro
 # TDC001 + PRM1-Z8 factor (f) and time step (t)
 t = 2048/(6e6) # sampling time 
 f = 1919.6418578623391 # encoder counts per degree factor [cts/deg], different for every stage
-a = 65536. # extra factor to when converting velocity and acceleration
+a = 65536. # extra factor to when converting velocity to acceleration
 
 # need functs to/from cts to angle [deg], ang velo [deg/s], ang accel [deg/s^2]
 # all factors should just be the numbers and program will handle how the factors are supposed to be
@@ -91,21 +91,22 @@ print(tl.list_kinesis_devices())
 # NOTE: need to know which motor is which for connection purposes
 # NOTE: keep the pol controlled by the TDC001 in FRONT, switch is not supported currently (1/9/23)
 # NOTE: dont actually need port of KDC101, just serial # which is 27263055
+# NOTE: both motors will home to what they think is 0 deg, if that isnt right, fix with apt user program
 
 # replace the word input with required information
 inputs = {
-	'front_port': 'input', # front pol port location (str)
-	'TDC_front': 'input', # is the pol controlled by the TDC001 the front pol (bool)
-	'KDC_SN': 'input', # KDC101 serial number, should be back pol (str)
-	'intial_pos': 'input', # front waveplates inital position [deg] (float), background data taken at this position
-	'final_position': 'input', #  front waveplates final position [deg] (float)
-	'offset': 'input', # orientation of back pol w.r.t front pol [deg] (float)
-	'step': 'input', # angular distance traveled between each spectrograph measurement [deg] (float)
-	'wait': 'input', # wait time [sec] before pol moves again (float or int)
-	'specSN': 'input', # spectrograph serial # (str)
-	'spec_int_time': 'input', # spectrograph integration time [msec] (int?)
-	'fname': 'input', # file name that data will saved under (str), MUST BE A .txt file
-	'path': 'input' # relative path to directory you would like the file saved to (str)
+	'front_port': 'COM6', # front pol port location (str)
+	'TDC_front': True , # is the pol controlled by the TDC001 the front pol (bool)
+	'KDC_SN': '27263055', # KDC101 serial number, should be back pol (str)
+	'intial_pos': 0., # front waveplates inital position [deg] (float), background data taken at this position
+	'final_position': 360., #  front waveplates final position [deg] (float)
+	'offset': 0., # orientation of back pol w.r.t front pol [deg] (float)
+	'step': 2., # angular distance traveled between each spectrograph measurement [deg] (float)
+	'wait': 11., # wait time [sec] before pol moves again (float or int)
+	'specSN': 'HR4P0326', # spectrograph serial # (str)
+	'spec_int_time': 1000, # spectrograph integration time [msec] (int?)
+	'fname': '290K_perpendicular_1000ms.txt', # file name that data will saved under (str), MUST BE A .txt file
+	'path': './Data/' # relative path to directory you would like the file saved to (str)
 }
 
 print('checking that the input dictionary has been filled out correctly')
@@ -134,7 +135,7 @@ assert(isinstance(inputs['path'],str)), 'path input must be str'
 # front pol
 print('connecting to front motor, one minute please')
 try:
-	frnt = apt.devices.tdc001(serial_port=inputs['front_port'])
+	frnt = apt.devices.tdc001.TDC001(serial_port=inputs['front_port'])
 except:
 	frnt.close()
 	raise Exception('an error occured while trying to connect to TDC001')
@@ -147,8 +148,8 @@ if (frnt_connection==False):
 	frnt.move_relative(from_d(5.))
 	time.sleep(5.)
 	frnt.move_absolute(from_d(0.))
-	time.sleep(5.)
-frnt_connection = is_mtr_connected(frnt)
+	time.sleep(10.)
+frnt_connection = is_apt_connected(frnt)
 if (frnt_connection):
 	print('front motor connection established!')
 else:
@@ -159,9 +160,10 @@ frnt.register_error_callback(error_callback)
 
 print('connecting to back motor, one minute please')
 try:
-	bck = tl.KinesisMotor('27263055',scale='stage')
-	bck.home()
+	bck = tl.KinesisMotor(inputs['KDC_SN'],scale='stage')
+	bck.move_to(0.)
 except:
+	frnt.close()
 	bck.close()
 	raise Exception('an error occured while trying to connect to KDC101')
 else:
@@ -191,13 +193,13 @@ time.sleep(2.)
 
 # moving pols to their starting pos and taking background
 pol_pos_d = np.arange(inputs['intial_pos'],(inputs['final_position']+inputs['step']),inputs['step'],dtype=float) # desired polarizer positions [deg]
-pol_pos_cts = np.array([pol_pos_d[i] for i in range(len(pol_pos_d))]) # desired polarizer pos [cts]
+pol_pos_cts = np.array([from_d(pol_pos_d[i]) for i in range(len(pol_pos_d))]) # desired polarizer pos [cts]
 pol_pos_bck = pol_pos_d + inputs['offset']
 
 print('time to collect background')
 frnt.move_absolute(pol_pos_cts[0])
 bck.move_to(pol_pos_bck[0])
-time.sleep(5.)
+time.sleep(10.)
 
 input('press enter to collect background')
 bkg = spectrum.getspec() 
@@ -255,7 +257,7 @@ else:
 	bck.close()
 	spectrum.close()
 # using np.savetxt, set up headers
-cmt = 'file was created at: ' + time.asctime()+'\n' + 'back polarizer was offset by: ' + str(inputs['offset'])+'\n' + 'front polarizer positions [deg]:\n' + str(pol_pos_d)
+cmt = 'file was created at: ' + time.asctime()+'\n' + 'back polarizer was offset by: ' + str(inputs['offset'])+'\n' + 'spectroscope int time [ms]: ' + str(inputs['spec_int_time'])+'\n' + 'front polarizer positions [deg]:\n' + str(pol_pos_d)
 # open file, will not overwrite
 try:
 	with open(inputs['path']+inputs['fname'],'x',encoding='utf-8') as f:
@@ -263,7 +265,7 @@ try:
 except FileExistsError:
 	print('this file already exists, i wont let you overwrite your data!')
 	new_fname = input('please put unused file name here:')
-	if (new_fname.[-4:]!='.txt'):
+	if (new_fname[-4:]!='.txt'):
 		new_fname += '.txt'
 	with open(inputs['path']+new_fname,'x',encoding='utf-8') as g:
 		np.savetxt(g,data,delimiter=',',header=cmt,encoding='utf-8')

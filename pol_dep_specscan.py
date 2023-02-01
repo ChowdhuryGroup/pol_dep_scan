@@ -81,15 +81,15 @@ def error_callback(source,msgid,code,notes):
 
 # replace the word input with the required information
 inputs = {
-	'motor_port': 'COM4', # motor port location (str)
+	'motor_port': 'COM6', # motor port location (str)
 	'intial_pos': 0., # waveplates inital position [deg] (float), background data taken at this position
 	'final_position': 360., # waveplates final position [deg] (float)
-	'step': 2., # angular distance traveled between each spectrograph measurement [deg] (float)
-	'wait': 6., # time to wait between the polarizer moving and the spectrometer taking the data [sec] (float)
+	'step': 3., # angular distance traveled between each spectrograph measurement [deg] (float)
+	'wait': 10., # time to wait between the polarizer moving and the spectrometer taking the data [sec] (float)
 	'specSN': 'HR4P0326', # spectrograph serial # (str)
 	'spec_int_time': 1500, # spectrograph integration time [msec] (int?)
-	'fname': '50khoriz 1500ms.txt', # file name that data will saved under (str), MUST BE A .txt file
-	'path': './Data/' # relative path to directory you would like the file saved to (str)
+	'fname': 'ref_offset90.txt', # file name that data will saved under (str), MUST BE A .txt file
+	'path': './Data/single_pol_data/2_1_23/' # RELATIVE path to directory you would like the file saved to (str)
 }
 print('Here is a list of devices that may help')
 print(apt.devices.aptdevice.list_devices())
@@ -99,6 +99,7 @@ for i in inputs:
 	if (inputs[i]=='input'):
 		raise Exception('nice try mf, input values need to be entered already')
 # do assertion errors for inputs
+# put a try statement to see if path exists if it doesnt then modify path to be an absolute path
 assert(type(inputs['motor_port'])==str), 'motor_port input must be a str'
 assert(isinstance(inputs['intial_pos'],(float,int))), 'intial_pos input must be a float or int'
 assert(isinstance(inputs['final_position'],(float,int))), 'final_position input must be a float or int'
@@ -115,6 +116,7 @@ assert(isinstance(inputs['path'],str)), 'path input must be str'
 
 # now connect to the machines
 # connect to motor first as 'intial_pos' will be the polarization taken for background data
+print('connecting to polarizer, one minute please')
 try:
 	mtr = apt.devices.tdc001.TDC001(serial_port=inputs['motor_port'])
 except:
@@ -218,7 +220,7 @@ else:
 	mtr.close()
 	spectrum.close()
 # using np.savetxt, so estabilish headers and such
-cmt = 'file was created at:' + time.asctime()+'\n' + 'polarizer positions [deg]:\n' + str(pol_pos_d)
+cmt = 'file was created at:' + time.asctime()+'\n' + 'spectroscope int time [ms]: ' + str(inputs['spec_int_time'])+'\n' + 'polarizer positions [deg]:\n' + str(pol_pos_d)
 # open file, will not overwrite!
 try:
 	with open(inputs['path']+inputs['fname'],'x',encoding='utf-8') as f:
