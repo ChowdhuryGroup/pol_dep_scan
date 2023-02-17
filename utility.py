@@ -1,72 +1,101 @@
-# motorized polarizer programs to be used with Thorlabs TDC001+PRM1-Z8
-# see readme and other .py file for better documentation
-# boilerplate
-from mimetypes import init
-import numpy as np
-from functools import partial
-import thorlabs_apt_device as apt
+import atexit
 import time
 
-# build conversions for encoder cts (what APT/motor knows) to real units
-# TDC001 + PRM1-Z8 factor (f) and time step (t)
-t = 2048 / (6e6)  # sampling time
-f = 1919.6418578623391  # encoder counts per degree factor [cts/deg], different for every stage
-a = 65536.0  # extra factor to when converting velocity and acceleration
+import numpy as np
+import thorlabs_apt_device as apt
+from pylablib.devices import Thorlabs as tl
 
-# need functs to/from cts to angle [deg], ang velocity [deg/s], angular acceleration [deg/s^2]
-# all factors should just be the numbers and program will handle how the factors are supposed to be
-def from_ang(angle, factor):
-    "funct takes in angle [deg] (float) and converts to angle [cts] (int) that the APT program recognizes"
-    return int(factor * angle)
+import angles
 
 
-def from_angvel(vel, factor, T):
-    "funct takes in anglular velocity [deg/s] (float) and converts to angular velocity [cts/s] (int) that the program recognizes"
-    return int(f * T * a * vel)
+class AptMotor:
+    connection: apt.TDC001
+
+    def __init__(self, port: str) -> None:
+        try:
+            connection = apt.devices.tdc001.TDC001(serial_port=port)
+            atexit.register(connection.close())
+        except:
+            raise Exception("an error occured while trying to connect to the motor")
+        else:
+            time.sleep(30.0)
+
+        # check for the motor connected status, if it starts off as True just continue code, or move and re-home and double check
+        if not is_mtr_connected(connection):
+            print("estabishing connection with motor, one moment please")
+            # move 5 degrees, sleep, and then move back
+            self.connection.move_absolute(angles.from_d(5.0))
+            time.sleep(5.0)
+            self.connection.move_absolute(angles.from_d(0.0))
+            time.sleep(5.0)
+
+        # now double check motor connection, if true yay keep going, else send it back to adam for fixin
+        if not is_mtr_connected():
+            raise Exception("motor connection not established, debugging required")
+        connection.register_error_callback(error_callback)
+        print("motor connection established!")
 
 
-def from_angacc(acc, factor, T):
-    "funct takes in angular acceleration [deg/s^2] (float) and converts to angular acceleration [cts/s^2] (int) that the program recognizes"
-    return int(f * T * T * a * acc)
+class KinesisMotor:
+    connection: tl.KinesisMotor
+
+    def __init__(self) -> None:
+        print("connecting to back motor, one minute please")
+        try:
+            bck = tl.KinesisMotor("27263055", scale="stage")
+            bck.home()
+        except:
+            bck.close()
+            raise Exception("an error occured while trying to connect to KDC101")
+        else:
+            time.sleep(60.0)
+        # check connection status of back motor
+        bck_connection = is_pll_connected(bck)
+        if bck_connection:
+            print("back motor connection established!")
+        else:
+            bck.close()
+            raise Exception(
+                "could not establish connection with back motor, debugging required"
+            )
 
 
-def to_ang(cts, factor):
-    "funct takes in angle [cts] (int) from the APT program and converts it to an angle [deg] (float)"
-    return cts / factor
+class Spectrograph:
+    def __init__(self) -> None:
+        print("connecting to spectrograph")
+        try:
+            spectrum = spectro.ocean(inputs["specSN"])
+        except:
+            frnt.close()
+            bck.close()
+            raise Exception("cannot connect to spectrograph, program ending")
+        # this is what original dscan does, idk why tho
+        try:
+            spectrum.setinttime(inputs["spec_int_time"])
+        except:
+            print("except")
+            spectrum.setinttime(inputs["spec_int_time"])
+        time.sleep(2.0)
 
 
-def to_angvel(cts, factor, T):
-    "funct takes in angular velocity [cts/s] (int) from the APT program and converts it to an angular velocity [deg/s] (float)"
-    return cts / (factor * T * a)
-
-
-def to_angacc(cts, factor, T):
-    "funct takes in angular acceleration [cts/s^2] (int) from the APT program and converts it to an angular acceleration [deg/s^2] (float)"
-    return cts / (factor * T * T * a)
-
-
-# now have partial functs to finish conversion
-from_d = partial(from_ang, factor=f)
-from_d.__doc__ = "partial funct takes in angle [deg] and converts to angle [cts]"
-from_dps = partial(from_angvel, factor=f, T=t)
-from_dps.__doc__ = "partial funct takes in angle velocity [deg/s] and converts to angle velocity [cts/s]"
-from_dpss = partial(from_angacc, factor=f, T=t)
-from_dpss.__doc__ = "partial funct takes in angle acceleration [deg/s^2] and converts to angle acceleration [cts/s^2]"
-to_d = partial(to_ang, factor=f)
-to_d.__doc__ = "partial funct takes in angle [cts] and converts to angle [deg]"
-to_dps = partial(to_angvel, factor=f, T=t)
-to_dps.__doc__ = "partial funct takes in angle velocity [cts/s] and converts to angle velocity [deg/s]"
-to_dpss = partial(to_angacc, factor=f, T=t)
-to_dpss.__doc__ = "partial funct takes in angle acceleration [cts/s^2] and converts to angle acceleration [deg/s^2]"
-
-# other helper functions
 def is_mtr_connected(motor):
     'returns bool value of motor.status["motor_connected"], just input APT device object'
     return motor.status["motor_connected"]
 
 
+#  pylablib help funct
+def is_pll_connected(motor):
+    "does get_status to returns bool value of pylablib motor, true if enabled, false otherwise"
+    sts = motor.get_status()
+    if "enabled" in sts:
+        connect = True
+    else:
+        connect = False
+    return connect
+
+
 # in case the motor throws an error
-def error_callback(source, msgid, code, note):
+def error_callback(source, code, note):
     print(f"Device {source} reported error code{code}: {note}")
 
 
@@ -116,9 +145,9 @@ def pol_step(port, initial, step, final, wait):
     )  # status if the motor is connected (bool), must always be true
     if mtr_connection == False:
         # move 5 degrees, sleep, and then move back
-        mtr.move_relative(from_d(5.0))
+        mtr.move_relative(angles.from_d(5.0))
         time.sleep(wait)
-        mtr.move_absolute(from_d(0.0))
+        mtr.move_absolute(angles.from_d(0.0))
         time.sleep(wait)
     # now double check motor connection, if true yay keep going, else send it back to adam for fixin
     mtr_connection = is_mtr_connected(mtr)
@@ -132,9 +161,9 @@ def pol_step(port, initial, step, final, wait):
     # desired polarizer positions [deg]
     pol_pos_d = np.arange(initial, final + step, step, dtype=float)
     # desired polarizer pos [cts]
-    pol_pos_cts = np.array([from_d(pol_pos_d[i]) for i in range(len(pol_pos_d))])
+    pol_pos_cts = np.array([angles.from_d(pol_pos_d[i]) for i in range(len(pol_pos_d))])
     # move pol to initial pos, if needed
-    if np.isclose(pol_pos_d[0], to_d(mtr.status["position"]), atol=0.2) == False:
+    if np.isclose(pol_pos_d[0], angles.to_d(mtr.status["position"]), atol=0.2) == False:
         print("moving polarizer to initial position")
         mtr.move_absolute(pol_pos_cts[0])
         time.sleep(wait)
@@ -149,7 +178,9 @@ def pol_step(port, initial, step, final, wait):
             print("moving to", pol_pos_d[i], "deg")
             time.sleep(wait)
             # check polarizer pos isnt drifting
-            drift = np.isclose(pol_pos_d[i], to_d(mtr.status["position"]), atol=0.2)
+            drift = np.isclose(
+                pol_pos_d[i], angles.to_d(mtr.status["position"]), atol=0.2
+            )
             if drift == False:
                 print("polarizer has drifted from desired values, ending collection")
                 did_break = True
@@ -165,4 +196,4 @@ def pol_step(port, initial, step, final, wait):
         raise Exception("loop terminated, see message above for why")
     else:
         mtr.close()
-        print("loop finished, closing device connections")
+        print("loop finished, closing maching connections, bye:)")

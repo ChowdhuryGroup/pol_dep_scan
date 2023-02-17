@@ -1,14 +1,16 @@
 # Original Author: Adam Fisher (July 2022)
 # Modified by Liam Clink
 # moving motorized thorlabs waveplate while also collecting spectra
-# import utility
-import numpy as np
-import thorlabs_apt_device as apt
-import time
-import oceanOpticSpectrosco as spectro
-import atexit
-import pathlib
 import argparse
+import atexit
+import time
+
+import numpy as np
+import oceanOpticSpectrosco as spectro
+import thorlabs_apt_device as apt
+from pylablib.devices import Thorlabs as tl
+
+import utility
 
 
 class LoadFromFile(argparse.Action):
@@ -97,18 +99,7 @@ pol_pos_cts = np.array(
 )  # desired polarizer pos [cts]
 
 
-# NOTE: ^ is just a .py file, you will need it in the same directory as this file
-# NOTE: to run the above scripts you also need seabreeze package and pyserial
-# NOTE: to install thorlabs_apt_device and seabreeze see line below
-
-
 # currently this only works for TDC001 connected to a PRM1Z8 any other devices will have to be added in future
-
-# build conversions for encoder cts (what APT/motor knows) to real units
-# TDC001 + PRM1-Z8 factor (f) and time step (t)
-t = 2048 / (6e6)  # sampling time
-f = 1919.6418578623391  # encoder counts per degree factor [cts/deg], different for every stage
-a = 65536.0  # extra factor to when converting velocity and acceleration
 
 # NOTE: MUST use some sort of iteration method if you wish to use conversion functions with numpy arrays
 # NOTE: this script will connect to controller will intialize and exit once it is over to prevent bad errors
@@ -124,33 +115,14 @@ a = 65536.0  # extra factor to when converting velocity and acceleration
 
 print("Devices visible to aptdevice: ")
 print(apt.devices.aptdevice.list_devices())
-
+print(tl.list_kinesis_devices())
 
 # now connect to the machines
 # connect to motor first as 'intial_pos' will be the polarization taken for background data
-try:
-    motor = apt.devices.tdc001.TDC001(serial_port=settings.motor_port)
-    atexit.register(motor.close())
-except:
-    raise Exception("an error occured while trying to connect to the motor")
-else:
-    time.sleep(30.0)
-
-# check for the motor connected status, if it starts off as True just continue code, or move and re-home and double check
-if not utility.is_mtr_connected(motor):
-    print("estabishing connection with motor, one moment please")
-    # move 5 degrees, sleep, and then move back
-    motor.move_absolute(utility.from_d(5.0))
-    time.sleep(5.0)
-    motor.move_absolute(utility.from_d(0.0))
-    time.sleep(5.0)
-# now double check motor connection, if true yay keep going, else send it back to adam for fixin
-if not utility.is_mtr_connected(motor):
-    raise Exception("motor connection not established, debugging required")
-print("motor connection established!")
+motor = utility.AptMotor(port=settings.motor_port)
 
 print("time to collect background!")
-motor.register_error_callback(utility.error_callback)
+
 
 # now move to motor to initial angle and generate background
 # once background is generated, create array so the rest of the data can be easily stored
