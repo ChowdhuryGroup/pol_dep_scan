@@ -3,13 +3,14 @@
 # moving motorized thorlabs waveplate while also collecting spectra
 import argparse
 import atexit
+import os
 import time
 
 import numpy as np
-import oceanOpticSpectrosco as spectro
 import thorlabs_apt_device as apt
 from pylablib.devices import Thorlabs as tl
 
+import oceanOpticSpectrosco as spectro
 import utility
 
 
@@ -20,7 +21,7 @@ class LoadFromFile(argparse.Action):
 
         # parse arguments in the file and store them in a blank namespace
         data = parser.parse_args(contents.split(), namespace=None)
-        print(vars(data).items())
+        # print(vars(data).items())
         for k, v in vars(data).items():
             # set arguments in the target namespace if they haven’t been set yet
             if getattr(namespace, k, None) is None:
@@ -75,15 +76,16 @@ parser.add_argument(
     help="file name that data will saved under",
 )
 
-settings = parser.parse_args()
+args = parser.parse_args()
 
-print(settings)
+# print(args)
 
 
 # open file, will not overwrite!
 try:
-    f = open(settings.path + settings.fname, "wb")
-    atexit.register(f.close())
+    os.makedirs(os.path.dirname(args.path + args.fname), exist_ok=True)
+    f = open(args.path + args.fname, "w")
+    atexit.register(f.close)
 except FileExistsError:
     raise Exception("The selected file name already exists!")
 
@@ -91,13 +93,10 @@ f.write("File was created at:" + time.asctime() + "\n")
 f.write("Polarizer angles [deg]:\n")
 
 # NEED TO FIX POL POS D
-pol_pos_d = np.arange(
-    settings.intial_angle, (settings.final_angle + settings.step), settings.step
-)  # desired polarizer positions [deg]
-pol_pos_cts = np.array(
-    [pol_pos_d[i] for i in range(len(pol_pos_d))]
-)  # desired polarizer pos [cts]
-
+# desired polarizer positions [degrees]
+pol_pos_d = np.arange(args.initial_angle, (args.final_angle + args.step), args.step)
+# desired polarizer pos [counts]
+pol_pos_cts = np.array([pol_pos_d[i] for i in range(len(pol_pos_d))])
 
 # currently this only works for TDC001 connected to a PRM1Z8 any other devices will have to be added in future
 
@@ -112,34 +111,35 @@ pol_pos_cts = np.array(
 # list devices so you can find the controller
 # things not included: motor pid/vid/serial#, any other spectrograph inputs
 
-
-print("Devices visible to aptdevice: ")
-print(apt.devices.aptdevice.list_devices())
-print(tl.list_kinesis_devices())
+try:
+    print("Devices visible to aptdevice: ")
+    print(apt.devices.aptdevice.list_devices())
+    print("Connected ThorLabs Kinesis Devices: ")
+    print(tl.list_kinesis_devices())
+except:
+    raise Exception("Can't list devices")
 
 # now connect to the machines
 # connect to motor first as 'intial_pos' will be the polarization taken for background data
-motor = utility.AptMotor(port=settings.motor_port)
+motor = utility.AptMotor(port=args.motor_port)
 
 print("time to collect background!")
-
-
-# now move to motor to initial angle and generate background
+# now move motor to initial angle and generate background
 # once background is generated, create array so the rest of the data can be easily stored
 motor.move_absolute(pol_pos_cts[0])
 time.sleep(3)
 # connect to spectrograph and set integration time
 try:
-    spectrum = spectro.ocean(settings.spectrometer_serial)
-    atexit.register(spectrum.close())
+    spectrum = spectro.ocean(args.spectrometer_serial)
+    atexit.register(spectrum.close)
 except:
     raise Exception("cannot make connection to spectrograph, program ending")
 # this is just what the original dscan does, not sure why tho
 try:
-    spectrum.setinttime(settings.spectrometer_integration_time)
+    spectrum.setinttime(args.spectrometer_integration_time)
 except:
     print("except")
-    spectrum.setinttime(settings.spectrometer_integration_time)
+    spectrum.setinttime(args.spectrometer_integration_time)
 time.sleep(2.0)
 
 input("press enter to capture background")
