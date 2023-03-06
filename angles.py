@@ -1,7 +1,10 @@
 from functools import partial
 
+# NOTE: MUST use some sort of iteration method if you wish to use conversion functions with numpy arrays
+
+
 # build conversions for encoder cts (what APT/motor knows) to real units
-# TDC001 + PRM1-Z8 factor (f) and time step (t)
+# PRM1-Z8 factor (f) and time step (t) (found in APT Communications Protocol: https://www.thorlabs.com/Software/Motion%20Control/APT_Communications_Protocol.pdf)
 t = 2048 / (6e6)  # sampling time
 f = 1919.6418578623391  # encoder counts per degree factor [cts/deg], different for every stage
 a = 65536.0  # extra factor to when converting velocity and acceleration

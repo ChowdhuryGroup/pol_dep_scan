@@ -14,14 +14,6 @@ import thorlabs_apt_device as apt
 
 import oceanOpticSpectrosco as spectro
 
-# NOTE: ^ is just a .py file, you will need it in the same directory as this file
-# NOTE: to run the above scripts you also need seabreeze package and pyserial
-# NOTE: to install thorlabs_apt_device and seabreeze see line below
-# pip install --upgrade thorlabs_apt_device
-# conda install -c conda-forge seabreeze
-# conda install -c conda-forge pylablib
-# ^ double check you have installed all dependancies before using (check documentation)
-
 # apt conversion for TDC001 + PRM1Z8
 # build conversions for encoder cts (what APT/motor knows) to real units
 # TDC001 + PRM1-Z8 factor (f) and time step (t)

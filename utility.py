@@ -14,26 +14,50 @@ class AptMotor:
 
     def __init__(self, port: str) -> None:
         try:
-            connection = apt.devices.tdc001.TDC001(serial_port=port)
-            atexit.register(connection.close())
+            # We want to establish good connection is present before waiting for homing
+            self.connection = apt.devices.tdc001.TDC001(serial_port=port, home=False)
+            self.connection.set_enabled(state=True)
         except:
             raise Exception("an error occured while trying to connect to the motor")
-        else:
-            time.sleep(30.0)
 
-        # check for the motor connected status, if it starts off as True just continue code, or move and re-home and double check
-        if not is_mtr_connected(connection):
+        atexit.register(self.connection.close)
+        self.connection.set_home_params(
+            int(angles.from_dps(10)), int(angles.from_d(3.7))
+        )
+        time.sleep(1.0)
+        print("homing...")
+
+        self.connection.home()
+        self.connection.move_absolute(angles.from_d(10.0))
+        self.connection.move_absolute(angles.from_d(-10.0))
+        for i in range(40):
+            time.sleep(1.0)
+            print(self.connection.status)
+
+        # Give controller a moment to initialize before asking it if the motor is connected
+        time.sleep(1.0)
+
+        # Set acceleration to 10000 counts/s/s, maximum velocity to 2000 counts/s/s
+        self.connection.set_velocity_params(10000, 2000)
+
+        if not is_mtr_connected(self.connection):
             print("estabishing connection with motor, one moment please")
             # move 5 degrees, sleep, and then move back
             self.connection.move_absolute(angles.from_d(5.0))
             time.sleep(5.0)
+            print(
+                "check: ",
+                self.connection.status["position"],
+                self.connection.status["motor_connected"],
+            )
             self.connection.move_absolute(angles.from_d(0.0))
             time.sleep(5.0)
+            print("check: ", self.connection.status["position"])
 
         # now double check motor connection, if true yay keep going, else send it back to adam for fixin
-        if not is_mtr_connected():
+        if not is_mtr_connected(self.connection):
             raise Exception("motor connection not established, debugging required")
-        connection.register_error_callback(error_callback)
+        self.connection.register_error_callback(error_callback)
         print("motor connection established!")
 
 

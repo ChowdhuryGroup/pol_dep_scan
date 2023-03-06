@@ -6,11 +6,11 @@ import serial.tools.list_ports
 
 
 class SerialPorts:
-    def __init__(self, ports_list: list):
+    def __init__(self, ports_list: list = []):
         self.ports_list = ports_list
 
-    @classmethod
-    def get_serial_ports(cls):
+    # @classmethod
+    def get_serial_ports(self):  # cls):
         data = []
         ports = list(serial.tools.list_ports.comports())
 
@@ -28,7 +28,8 @@ class SerialPorts:
             )
             data.append(obj)
 
-        return cls(ports_list=data)
+        self.ports_list = data
+        # return cls(ports_list=data)
 
     @staticmethod
     def get_description_by_device(device: str):
@@ -54,6 +55,8 @@ class Object:
         self.data = data
         self.device = data.get("device")
         self.description = data.get("description")
+        self.manufacturer = data.get("manufacturer")
+        self.serial_number = data.get("serial_number")
 
 
 if __name__ == "__main__":

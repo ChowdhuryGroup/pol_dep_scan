@@ -34,9 +34,9 @@ parser.add_argument(
     "--config-file", type=open, action=LoadFromFile, help="Specify input file"
 )
 parser.add_argument(
-    "--motor_port",
+    "--motor_serial",
     type=str,
-    help="motor port location",
+    help="motor serial number",
 )
 parser.add_argument(
     "--initial_angle",
@@ -79,8 +79,6 @@ parser.add_argument(
 
 args = parser.parse_args()
 
-# print(args)
-
 
 # open file, will not overwrite!
 try:
@@ -93,41 +91,32 @@ except FileExistsError:
 f.write("File was created at:" + time.asctime() + "\n")
 f.write("Polarizer angles [deg]:\n")
 
-# NEED TO FIX POL POS D
 # desired polarizer positions [degrees]
 pol_pos_d = np.arange(args.initial_angle, (args.final_angle + args.step), args.step)
-# desired polarizer pos [counts]
-pol_pos_cts = np.array([pol_pos_d[i] for i in range(len(pol_pos_d))])
 
 # currently this only works for TDC001 connected to a PRM1Z8 any other devices will have to be added in future
 
-# NOTE: MUST use some sort of iteration method if you wish to use conversion functions with numpy arrays
-# NOTE: this script will connect to controller will intialize and exit once it is over to prevent bad errors
-# NOTE: serial number for TDC001 should be '83------'. however, adam's wasnt but stil worked, just watch out
-# NOTE: need 0 <= intial and final position of polarizer <=360 [deg]
-# NOTE: this assumes that the spectrograph's .getspec() program gets the same number of wavelengths each time
-# NOTE: will not allow overwriting for files, if you dont change the name it was throw an error and youll have to take the data again
-
-# print dict of important values so that they can be double checked
-# list devices so you can find the controller
-# things not included: motor pid/vid/serial#, any other spectrograph inputs
-
 try:
-    print("Devices visible to aptdevice: ")
-    print(apt.devices.aptdevice.list_devices())
-    print("Connected ThorLabs Kinesis Devices: ")
-    print(tl.list_kinesis_devices())
+    print("Connected serial devices: ")
+    ports = list_serial.SerialPorts()
+    ports.get_serial_ports()
+    print(ports.ports_list)
+    for port in ports.ports_list:
+
+        if port.serial_number == args.motor_serial:
+            motor_port: str = port.device
+            print(motor_port)
 except:
     raise Exception("Can't list devices")
 
 # now connect to the machines
 # connect to motor first as 'intial_pos' will be the polarization taken for background data
-motor = utility.AptMotor(port=args.motor_port)
+motor = utility.AptMotor(port=motor_port)
 
 print("time to collect background!")
 # now move motor to initial angle and generate background
 # once background is generated, create array so the rest of the data can be easily stored
-motor.move_absolute(pol_pos_cts[0])
+motor.move_absolute(pol_pos_d[0])
 time.sleep(3)
 # connect to spectrograph and set integration time
 try:
@@ -155,11 +144,11 @@ np.savetxt(f, background[1])
 
 # now to collect the rest of the data
 input("Press enter to begin collecting data...")
-for i in range(len(pol_pos_cts)):
+for i in range(len(pol_pos_d)):
     # check connection every time
     mtr_connection = utility.is_mtr_connected(motor)
     if mtr_connection:
-        motor.move_absolute(pol_pos_cts[i])
+        motor.move_absolute(pol_pos_d[i])
         print("moving to", pol_pos_d[i], "deg")
         time.sleep(5.0)
         # check that polarizer angle isn't drifting
