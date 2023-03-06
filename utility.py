@@ -6,6 +6,7 @@ import thorlabs_apt_device as apt
 from pylablib.devices import Thorlabs as tl
 
 import angles
+import oceanOpticSpectrosco as spectro
 
 
 class AptMotor:
@@ -100,7 +101,7 @@ def error_callback(source, code, note):
 
 
 def list_com_devices():
-    "litterally what the funct say, just a wrapper for an apt funct"
+    "literally what the funct say, just a wrapper for an apt funct"
     print(apt.devices.aptdevice.list_devices())
 
 

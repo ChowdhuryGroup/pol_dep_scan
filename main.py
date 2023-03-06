@@ -10,6 +10,7 @@ import numpy as np
 import thorlabs_apt_device as apt
 from pylablib.devices import Thorlabs as tl
 
+import list_serial
 import oceanOpticSpectrosco as spectro
 import utility
 
