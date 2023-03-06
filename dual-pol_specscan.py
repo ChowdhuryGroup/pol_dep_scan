@@ -95,17 +95,17 @@ print(tl.list_kinesis_devices())
 
 # replace the word input with required information
 inputs = {
-	'front_port': 'COM6', # front pol port location (str)
+	'front_port': 'COM4', # front pol port location (str)
 	'TDC_front': True , # is the pol controlled by the TDC001 the front pol (bool)
 	'KDC_SN': '27263055', # KDC101 serial number, should be back pol (str)
 	'intial_pos': 0., # front waveplates inital position [deg] (float), background data taken at this position
 	'final_position': 360., #  front waveplates final position [deg] (float)
 	'offset': 0., # orientation of back pol w.r.t front pol [deg] (float)
-	'step': 2., # angular distance traveled between each spectrograph measurement [deg] (float)
+	'step': 4., # angular distance traveled between each spectrograph measurement [deg] (float)
 	'wait': 11., # wait time [sec] before pol moves again (float or int)
 	'specSN': 'HR4P0326', # spectrograph serial # (str)
-	'spec_int_time': 1000, # spectrograph integration time [msec] (int?)
-	'fname': '290K_perpendicular_1000ms.txt', # file name that data will saved under (str), MUST BE A .txt file
+	'spec_int_time': 2000, # spectrograph integration time [msec] (int?)
+	'fname': 'AgScP2S6_Sample2_offset_0_295k.txt', # file name that data will saved under (str), MUST BE A .txt file
 	'path': './Data/' # relative path to directory you would like the file saved to (str)
 }
 
@@ -193,7 +193,8 @@ time.sleep(2.)
 
 # moving pols to their starting pos and taking background
 pol_pos_d = np.arange(inputs['intial_pos'],(inputs['final_position']+inputs['step']),inputs['step'],dtype=float) # desired polarizer positions [deg]
-pol_pos_cts = np.array([from_d(pol_pos_d[i]) for i in range(len(pol_pos_d))]) # desired polarizer pos [cts]
+#ADD DIVIDE BY 2 HERE for smaller waveplate motion
+pol_pos_cts = np.array([from_d(pol_pos_d[i]/2) for i in range(len(pol_pos_d))]) # desired polarizer pos [cts]
 pol_pos_bck = pol_pos_d + inputs['offset']
 
 print('time to collect background')
@@ -220,12 +221,12 @@ for i in range(len(pol_pos_cts)):
 	frnt_connection = is_apt_connected(frnt)
 	bck_connection = is_pll_connected(bck)
 	if (frnt_connection and bck_connection):
-		print('moving to ', pol_pos_d[i], ' and ',pol_pos_bck[i],' deg')
+		print('moving to ', to_d(pol_pos_cts[i]), ' and ',pol_pos_bck[i],' deg')
 		frnt.move_absolute(pol_pos_cts[i])
 		bck.move_to(pol_pos_bck[i])
 		time.sleep(inputs['wait'])
 		# check pol drift
-		df = np.isclose(pol_pos_d[i],to_d(frnt.status['position']),atol=0.2)
+		df = np.isclose(to_d(pol_pos_cts[i]),to_d(frnt.status['position']),atol=0.2)
 		db = np.isclose(pol_pos_bck[i],bck.get_position(),atol=0.2)
 		if (df==False) or (db==False):
 			print('a polarizer has drifted from desired values, ending collection')
