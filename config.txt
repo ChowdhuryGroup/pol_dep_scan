@@ -1,4 +1,4 @@
---motor_serial 83822060
+--motor_serial 83820823
 --initial_angle 0.
 --final_angle 360.
 --step 2.

@@ -21,18 +21,23 @@ class AptMotor:
             raise Exception("an error occured while trying to connect to the motor")
 
         atexit.register(self.connection.close)
-        self.connection.set_home_params(
-            int(angles.from_dps(10)), int(angles.from_d(3.7))
-        )
+        self.connection.set_home_params(int(angles.from_dps(10)), int(angles.from_d(0)))
         time.sleep(1.0)
         print("homing...")
 
-        self.connection.home()
+        # The status will not be updated until the homing is complete
+        # Check whether homing is complete every second
+        # self.connection.home()
         self.connection.move_absolute(angles.from_d(10.0))
         self.connection.move_absolute(angles.from_d(-10.0))
         for i in range(40):
             time.sleep(1.0)
             print(self.connection.status)
+            """
+            if self.connection.status["homed"]:
+                print("stage is now homed")
+                break
+            """
 
         # Give controller a moment to initialize before asking it if the motor is connected
         time.sleep(1.0)

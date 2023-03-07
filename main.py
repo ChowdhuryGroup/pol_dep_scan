@@ -13,6 +13,7 @@ from pylablib.devices import Thorlabs as tl
 import list_serial
 import oceanOpticSpectrosco as spectro
 import utility
+import angles
 
 
 class LoadFromFile(argparse.Action):
@@ -116,7 +117,7 @@ motor = utility.AptMotor(port=motor_port)
 print("time to collect background!")
 # now move motor to initial angle and generate background
 # once background is generated, create array so the rest of the data can be easily stored
-motor.move_absolute(pol_pos_d[0])
+motor.connection.move_absolute(angles.from_d(pol_pos_d[0]))
 time.sleep(3)
 # connect to spectrograph and set integration time
 try:
