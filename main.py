@@ -3,17 +3,22 @@
 # moving motorized thorlabs waveplate while also collecting spectra
 import argparse
 import atexit
+import logging
 import os
 import time
+from types import NoneType
 
 import numpy as np
 import thorlabs_apt_device as apt
 from pylablib.devices import Thorlabs as tl
 
+import angles
 import list_serial
 import oceanOpticSpectrosco as spectro
 import utility
-import angles
+
+# Set the logging level to DEBUG, comment out if you want to suppress console spam
+logging.basicConfig(level=logging.DEBUG)
 
 
 class LoadFromFile(argparse.Action):
@@ -79,9 +84,11 @@ parser.add_argument(
 )
 
 args = parser.parse_args()
+for arg in vars(args):
+    if type(arg) == NoneType:
+        raise Exception("The inputs for the program are not all specified.")
 
-
-# open file, will not overwrite!
+# open the output file, will not overwrite!
 try:
     os.makedirs(os.path.dirname(args.path + args.fname), exist_ok=True)
     f = open(args.path + args.fname, "w")
@@ -109,6 +116,12 @@ try:
             print(motor_port)
 except:
     raise Exception("Can't list devices")
+
+# Check if motor_port is defined
+try:
+    motor_port
+except:
+    raise Exception("No motor is connected")
 
 # now connect to the machines
 # connect to motor first as 'intial_pos' will be the polarization taken for background data

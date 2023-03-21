@@ -3,33 +3,103 @@ import time
 
 import numpy as np
 import thorlabs_apt_device as apt
+from thorlabs_apt_device import protocol
 from pylablib.devices import Thorlabs as tl
 
 import angles
 import oceanOpticSpectrosco as spectro
 
 
+# Since aptdevice_motor doesn't include functions related to limit switch, need to define them
+class TDC001(apt.TDC001):
+    def set_lim_params_PRM1Z8(self, bay=0, channel=0):
+        """
+        Set parameters for limit switch.
+        :param bay: Index (0-based) of controller bay to send the command.
+        :param channel: Index (0-based) of controller bay channel to send the command.
+        """
+
+        self._log.debug("Setting limit parameters appropriate for PRM1Z8.")
+        self._loop.call_soon_threadsafe(
+            self._write,
+            protocol.mot_set_limswitchparams(
+                source=apt.EndPoint.HOST,
+                dest=self.bays[bay],
+                chan_ident=self.channels[channel],
+                cw_hardlimit=0x04,
+                ccw_hardlimit=0x01,
+                cw_softlimit=0x0780,
+                ccw_softlimit=0x0780,
+                soft_limit_mode=0x01,
+            ),
+        )
+        # Update status with new home parameters
+        self._loop.call_soon_threadsafe(
+            self._write,
+            protocol.mot_req_limswitchparams(
+                source=apt.EndPoint.HOST,
+                dest=self.bays[bay],
+                chan_ident=self.channels[channel],
+            ),
+        )
+
+    def set_dc_pid_params_PRM1Z8(self, bay=0, channel=0):
+        self._log.debug("Setting DC PID parameters appropriate for PRM1Z8.")
+
+        self._loop.call_soon_threadsafe(
+            self._write,
+            protocol.mot_set_dcpidparams(
+                source=apt.EndPoint.HOST,
+                dest=self.bays[bay],
+                chan_ident=self.channels[channel],
+                proportional=0x0352,
+                integral=0x96,
+                differential=0x0AA0,
+                integral_limit=0x32,
+            ),
+        )
+
+        self._loop.call_soon_threadsafe(
+            self._write,
+            protocol.mot_req_dcpidparams(
+                source=apt.EndPoint.HOST,
+                dest=self.bays[bay],
+                chan_ident=self.channels[channel],
+            ),
+        )
+
+    def set_home_params_PRM1Z8(self):
+        self.set_home_params(
+            velocity=0x00068D62, offset_distance=0x00001DFF, direction="reverse"
+        )
+
+
 class AptMotor:
-    connection: apt.TDC001
+    connection: TDC001
 
     def __init__(self, port: str) -> None:
         try:
             # We want to establish good connection is present before waiting for homing
-            self.connection = apt.devices.tdc001.TDC001(serial_port=port, home=False)
+            self.connection = TDC001(serial_port=port, home=False)
             self.connection.set_enabled(state=True)
         except:
             raise Exception("an error occured while trying to connect to the motor")
 
         atexit.register(self.connection.close)
-        self.connection.set_home_params(int(angles.from_dps(10)), int(angles.from_d(0)))
-        time.sleep(1.0)
-        print("homing...")
+
+        # The TCube does not load parameters from stages, so the params for the PRM1Z8
+        # need to be set
+        self.connection.set_home_params_PRM1Z8()
+        self.connection.set_lim_params_PRM1Z8()
+        self.connection.set_dc_pid_params_PRM1Z8()
 
         # The status will not be updated until the homing is complete
         # Check whether homing is complete every second
-        # self.connection.home()
-        self.connection.move_absolute(angles.from_d(10.0))
-        self.connection.move_absolute(angles.from_d(-10.0))
+        time.sleep(1.0)
+        print("homing...")
+        self.connection.home()
+        # self.connection.move_absolute(angles.from_d(10.0))
+        # self.connection.move_absolute(angles.from_d(-10.0))
         for i in range(40):
             time.sleep(1.0)
             print(self.connection.status)

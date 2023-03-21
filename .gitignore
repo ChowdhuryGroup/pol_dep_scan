@@ -1,3 +1,5 @@
+*.code-workspace
+
 Data/*
 
 # Byte-compiled / optimized / DLL files
